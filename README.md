@@ -273,6 +273,30 @@ sudo systemctl enable sbpush
 sudo systemctl start sbpush
 ```
 
+### Docker 部署（推荐）
+
+1. **构建并启动容器**：
+
+   ```bash
+   docker-compose up -d --build
+   ```
+
+2. **常用管理命令**：
+
+   ```bash
+   # 查看日志
+   docker-compose logs -f
+   
+   # 重启服务（修改配置后）
+   docker-compose restart
+   
+   # 停止服务
+   docker-compose down
+   ```
+
+3. **配置挂载**：
+   容器会自动挂载本地的 `config/` 目录，所以你可以直接在主机上修改 `config/.env` 和 `config/cookies.json`，重启容器即可生效。
+
 ## 🏗️ 架构设计
 
 ```

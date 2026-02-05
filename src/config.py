@@ -44,6 +44,10 @@ class Config:
     # 检查间隔（秒）
     CHECK_INTERVAL: int = _get_int("CHECK_INTERVAL", 300)
     
+    # 检查 Cron 表达式 (例如 "*/30 * 9-11,13-15 * * 1-5")
+    # 如果设置了此项，将优先于 CHECK_INTERVAL 使用
+    CHECK_CRON: str = os.getenv("CHECK_CRON", "")
+    
     # 是否使用无头模式
     HEADLESS: bool = _get_bool("HEADLESS", True)
     

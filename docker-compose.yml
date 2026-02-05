@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  sbpush:
+    build: .
+    container_name: sbpush
+    restart: unless-stopped
+    volumes:
+      - ./config:/app/config
+    environment:
+      - TZ=Asia/Shanghai

@@ -1,0 +1,14 @@
+venv
+__pycache__
+.git
+.DS_Store
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+.env
+config/cookies.json
+*.log
+screenshot.png
+debug_screenshot.png

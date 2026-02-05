@@ -8,6 +8,8 @@ from typing import Optional
 from .config import config
 from .scraper import PageScraper
 from .notifier import NotifierManager, init_notifiers
+from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 
 class StockMonitor:
@@ -114,7 +116,6 @@ class StockMonitor:
         """启动持续监控"""
         self._log("🚀 监控服务启动")
         self._log(f"📍 目标URL: {config.TARGET_URL}")
-        self._log(f"⏱️  检查间隔: {config.CHECK_INTERVAL} 秒")
         
         # 验证配置
         config.validate()
@@ -125,16 +126,26 @@ class StockMonitor:
         try:
             self.scraper.start()
             
-            while True:
-                try:
-                    self.check_once()
-                except Exception as e:
-                    self._log(f"❌ 检查出错: {e}")
-                
-                time.sleep(config.CHECK_INTERVAL)
-                
+            scheduler = BlockingScheduler()
+            
+            if config.CHECK_CRON:
+                self._log(f"⏱️  使用 Cron 调度: {config.CHECK_CRON}")
+                trigger = CronTrigger.from_crontab(config.CHECK_CRON)
+                scheduler.add_job(self.check_once, trigger)
+            else:
+                self._log(f"⏱️  使用固定间隔调度: {config.CHECK_INTERVAL} 秒")
+                scheduler.add_job(self.check_once, 'interval', seconds=config.CHECK_INTERVAL)
+            
+            # 启动时先执行一次
+            self.check_once()
+            
+            self._log("⏳ 等待下次调度...")
+            scheduler.start()
+            
         except KeyboardInterrupt:
             self._log("⏹️  收到停止信号")
+        except Exception as e:
+            self._log(f"❌ 运行出错: {e}")
         finally:
             self.scraper.stop()
             self._log("👋 监控服务已停止")
