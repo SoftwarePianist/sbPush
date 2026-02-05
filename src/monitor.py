@@ -71,13 +71,13 @@ class StockMonitor:
             price = current_record.get("price", "")
             
             # 标题和图标：买入/卖出
-            # 使用 GitHub Raw 托管的自定义图标
+            # 图标 URL 从配置中获取，支持自定义
             if "买" in trade_type:
                 title = "🟢 买入"
-                icon = "https://raw.githubusercontent.com/SoftwarePianist/sbPush/main/assets/buy_icon.png"
+                icon = config.BUY_ICON_URL
             elif "卖" in trade_type:
                 title = "🔴 卖出"
-                icon = "https://raw.githubusercontent.com/SoftwarePianist/sbPush/main/assets/sell_icon.png"
+                icon = config.SELL_ICON_URL
             else:
                 title = f"📈 {trade_type}"
                 icon = None

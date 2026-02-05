@@ -60,9 +60,18 @@ class Config:
     # JS 渲染额外等待时间（毫秒）
     RENDER_WAIT: int = 3000
     
-    # Cookies 配置（JSON 格式字符串，或文件路径）
     COOKIES: str = os.getenv("COOKIES", "")
     COOKIES_FILE: str = os.getenv("COOKIES_FILE", "")
+    
+    # 图标配置
+    BUY_ICON_URL: str = os.getenv(
+        "BUY_ICON_URL",
+        "https://raw.githubusercontent.com/SoftwarePianist/sbPush/main/assets/buy_icon.png"
+    )
+    SELL_ICON_URL: str = os.getenv(
+        "SELL_ICON_URL",
+        "https://raw.githubusercontent.com/SoftwarePianist/sbPush/main/assets/sell_icon.png"
+    )
     
     @classmethod
     def get_notifier_config(cls) -> Dict[str, Dict[str, Any]]:
