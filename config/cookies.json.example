@@ -1,0 +1,14 @@
+[
+  {
+    "name": "SESSION_ID",
+    "value": "你的session值",
+    "domain": ".pingan.com",
+    "path": "/"
+  },
+  {
+    "name": "ANOTHER_COOKIE",
+    "value": "cookie值",
+    "domain": ".stock.pingan.com",
+    "path": "/"
+  }
+]
