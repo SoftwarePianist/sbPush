@@ -133,7 +133,23 @@ class StockMonitor:
             
             if config.CHECK_CRON:
                 self._log(f"⏱️  使用 Cron 调度: {config.CHECK_CRON}")
-                trigger = CronTrigger.from_crontab(config.CHECK_CRON)
+                cron_parts = config.CHECK_CRON.split()
+                if len(cron_parts) == 6:
+                    # 6 字段格式: 秒 分 时 日 月 周
+                    trigger = CronTrigger(
+                        second=cron_parts[0],
+                        minute=cron_parts[1],
+                        hour=cron_parts[2],
+                        day=cron_parts[3],
+                        month=cron_parts[4],
+                        day_of_week=cron_parts[5],
+                        timezone=tz
+                    )
+                elif len(cron_parts) == 5:
+                    # 5 字段格式: 分 时 日 月 周 (标准 crontab)
+                    trigger = CronTrigger.from_crontab(config.CHECK_CRON, timezone=tz)
+                else:
+                    raise ValueError(f"无效的 Cron 表达式，需要 5 或 6 个字段，实际为 {len(cron_parts)} 个")
                 scheduler.add_job(self.check_once, trigger)
             else:
                 self._log(f"⏱️  使用固定间隔调度: {config.CHECK_INTERVAL} 秒")
