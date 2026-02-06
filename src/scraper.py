@@ -23,12 +23,45 @@ class PageScraper:
         self._context: Optional[BrowserContext] = None
         self._page: Optional[Page] = None
     
+    def _parse_raw_cookie_string(self, cookie_string: str, domain: str = "m.stock.pingan.com") -> List[dict]:
+        """
+        解析从浏览器 F12 复制的原始 cookie 字符串
+        
+        格式: name=value; name2=value2; ...
+        
+        Args:
+            cookie_string: 原始 cookie 字符串
+            domain: Cookie 的域名，默认为目标域名
+        
+        Returns:
+            Cookie 列表 (Playwright 格式)
+        """
+        cookies = []
+        # 按分号分割
+        pairs = cookie_string.split(';')
+        for pair in pairs:
+            pair = pair.strip()
+            if not pair or '=' not in pair:
+                continue
+            # 只分割第一个等号，因为 value 中可能包含等号
+            name, value = pair.split('=', 1)
+            name = name.strip()
+            value = value.strip()
+            if name:
+                cookies.append({
+                    "name": name,
+                    "value": value,
+                    "domain": domain,
+                    "path": "/",
+                })
+        return cookies
+    
     def _load_cookies(self) -> List[dict]:
         """
         加载 Cookies 配置
         支持两种方式:
-        1. COOKIES 环境变量: JSON 格式的 cookie 数组
-        2. COOKIES_FILE 环境变量: 指向 cookies.json 文件的路径
+        1. COOKIES 环境变量: JSON 格式的 cookie 数组，或原始 cookie 字符串 (name=value; name2=value2)
+        2. COOKIES_FILE 环境变量: 指向 cookies.json 或 cookies.txt 文件的路径
         
         Returns:
             Cookie 列表
@@ -41,8 +74,16 @@ class PageScraper:
             if cookies_path.exists():
                 try:
                     with open(cookies_path, 'r', encoding='utf-8') as f:
-                        raw_cookies = json.load(f)
-                    print(f"🍪 从文件加载了 {len(raw_cookies)} 个 cookies")
+                        content = f.read().strip()
+                    
+                    # 尝试解析为 JSON
+                    if content.startswith('['):
+                        raw_cookies = json.loads(content)
+                        print(f"🍪 从文件加载了 {len(raw_cookies)} 个 cookies (JSON 格式)")
+                    else:
+                        # 解析原始 cookie 字符串格式: name=value; name2=value2
+                        raw_cookies = self._parse_raw_cookie_string(content)
+                        print(f"🍪 从文件加载了 {len(raw_cookies)} 个 cookies (原始字符串格式)")
                 except Exception as e:
                     print(f"⚠️ 加载 cookies 文件失败: {e}")
             else:
@@ -51,20 +92,35 @@ class PageScraper:
         # 如果文件不存在，尝试从环境变量加载
         elif config.COOKIES:
             try:
-                raw_cookies = json.loads(config.COOKIES)
-                print(f"🍪 从环境变量加载了 {len(raw_cookies)} 个 cookies")
-            except json.JSONDecodeError as e:
+                # 尝试解析为 JSON
+                if config.COOKIES.strip().startswith('['):
+                    raw_cookies = json.loads(config.COOKIES)
+                    print(f"🍪 从环境变量加载了 {len(raw_cookies)} 个 cookies (JSON 格式)")
+                else:
+                    # 解析原始 cookie 字符串格式
+                    raw_cookies = self._parse_raw_cookie_string(config.COOKIES)
+                    print(f"🍪 从环境变量加载了 {len(raw_cookies)} 个 cookies (原始字符串格式)")
+            except Exception as e:
                 print(f"⚠️ 解析 cookies 失败: {e}")
         
         # 处理 cookies，修复 sameSite 等字段
         cookies = []
         valid_same_site = {"Strict", "Lax", "None"}
+        # 目标域名
+        target_domains = ["m.stock.pingan.com", ".pingan.com", ".stock.pingan.com"]
+        
         for cookie in raw_cookies:
+            domain = cookie.get("domain", "")
+            
+            # 只保留与目标域名相关的 cookies
+            if not any(domain.endswith(d.lstrip('.')) or d.endswith(domain.lstrip('.')) for d in target_domains):
+                continue
+            
             # 只保留 Playwright 支持的字段
             clean_cookie = {
                 "name": cookie.get("name"),
                 "value": cookie.get("value"),
-                "domain": cookie.get("domain"),
+                "domain": domain,
                 "path": cookie.get("path", "/"),
             }
             # 处理 sameSite
@@ -76,10 +132,18 @@ class PageScraper:
             # 可选字段
             if cookie.get("secure"):
                 clean_cookie["secure"] = cookie["secure"]
+            # 处理过期时间 (EditThisCookie 导出的是 expirationDate，Playwright 需要 expires)
             if cookie.get("expires"):
                 clean_cookie["expires"] = cookie["expires"]
+            elif cookie.get("expirationDate"):
+                clean_cookie["expires"] = cookie["expirationDate"]
             
             cookies.append(clean_cookie)
+        
+        # 打印实际加载的 cookies 数量 (调试用)
+        login_cookies = [c for c in cookies if 'login' in c.get('name', '').lower()]
+        if login_cookies:
+            print(f"🔑 检测到 {len(login_cookies)} 个登录相关 cookies")
         
         return cookies
     
@@ -183,8 +247,12 @@ class PageScraper:
             trade_icon = record.locator(".stock-sale-icon span")
             trade_type = trade_icon.inner_text().strip() if trade_icon.count() > 0 else "未知"
             
-            # 提取股票信息 (登录后在第一个 td.darker 中，未登录在 .trade-info-lock 中)
-            stock_name_el = record.locator("td.darker").first
+            # 获取表格引用
+            table = record.locator(".trade-item")
+            
+            # 提取股票信息 (登录后在第一行的 td.darker 中)
+            # 结构: tr:nth-child(1) > td.darker 包含 "江苏雷利(300660)"
+            stock_name_el = table.locator("tr:nth-child(1) td.darker")
             stock_code = ""
             if stock_name_el.count() > 0:
                 stock_code = stock_name_el.inner_text().strip()
@@ -194,8 +262,9 @@ class PageScraper:
                 if stock_info_el.count() > 0:
                     stock_code = stock_info_el.inner_text().strip()
             
-            # 提取仓位变化 (登录后在第二个 td.darker 中)
-            position_el = record.locator("td.darker").nth(1)
+            # 提取仓位变化 (登录后在第二行的 td.darker 中)
+            # 结构: tr:nth-child(2) > td.darker 包含 "个股仓位：13.94% → 29.95%"
+            position_el = table.locator("tr:nth-child(2) td.darker")
             position_change = ""
             if position_el.count() > 0:
                 position_text = position_el.inner_text().strip()
@@ -205,8 +274,9 @@ class PageScraper:
                 else:
                     position_change = position_text
             
-            # 提取调仓时间 (在第一个 .weaker 单元格中)
-            time_el = record.locator("td.weaker").first
+            # 提取调仓时间 (在第一行的 td.weaker 中)
+            # 结构: tr:nth-child(1) > td.weaker 包含 "调仓时间：02/03  09:52"
+            time_el = table.locator("tr:nth-child(1) td.weaker")
             trade_time = ""
             if time_el.count() > 0:
                 time_text = time_el.inner_text().strip()
@@ -215,9 +285,10 @@ class PageScraper:
                 else:
                     trade_time = time_text
             
-            # 提取价格 (在第二个 .weaker 单元格中，登录后可见)
+            # 提取价格 (在第二行的 td.weaker 中，登录后可见)
+            # 结构: tr:nth-child(2) > td.weaker 包含 "价格：52.28元"
             price = ""
-            price_el = record.locator("td.weaker").nth(1)
+            price_el = table.locator("tr:nth-child(2) td.weaker")
             if price_el.count() > 0:
                 price_text = price_el.inner_text().strip()
                 if "：" in price_text:
