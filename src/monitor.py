@@ -10,6 +10,7 @@ from .scraper import PageScraper
 from .notifier import NotifierManager, init_notifiers
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
+import pytz
 
 
 class StockMonitor:
@@ -126,7 +127,9 @@ class StockMonitor:
         try:
             self.scraper.start()
             
-            scheduler = BlockingScheduler()
+            # 明确指定时区以避免有些环境下的 tzlocal 报错
+            tz = pytz.timezone('Asia/Shanghai')
+            scheduler = BlockingScheduler(timezone=tz)
             
             if config.CHECK_CRON:
                 self._log(f"⏱️  使用 Cron 调度: {config.CHECK_CRON}")
