@@ -8,6 +8,7 @@ from typing import Optional
 from .config import config
 from .scraper import PageScraper
 from .notifier import NotifierManager, init_notifiers
+from .logger import get_logger, print_startup_banner, print_config_summary
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
@@ -21,11 +22,13 @@ class StockMonitor:
         self.notifier_manager: Optional[NotifierManager] = None
         self.last_record: Optional[str] = None
         self.check_count: int = 0
+        self.logger = get_logger()
+        self.start_time: Optional[datetime] = None
     
-    def _log(self, message: str) -> None:
-        """带时间戳的日志输出"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"[{timestamp}] {message}")
+    def _log(self, message: str, level: str = "info") -> None:
+        """日志输出"""
+        log_func = getattr(self.logger, level.lower(), self.logger.info)
+        log_func(message)
     
     def _init_notifiers(self) -> None:
         """初始化推送管理器"""
@@ -35,7 +38,7 @@ class StockMonitor:
         if self.notifier_manager.channels:
             self._log(f"📢 已启用推送渠道: {', '.join(self.notifier_manager.channels)}")
         else:
-            self._log("⚠️  未配置任何推送渠道")
+            self._log("⚠️  未配置任何推送渠道", "warning")
     
     def check_once(self) -> bool:
         """
@@ -112,13 +115,16 @@ class StockMonitor:
             self.last_record = record_key
             return True
         
-        self._log("✓ 无变化")
+        self._log("✓ 无变化", "debug")
         return False
     
     def run(self) -> None:
         """启动持续监控"""
-        self._log("🚀 监控服务启动")
-        self._log(f"📍 目标URL: {config.TARGET_URL}")
+        self.start_time = datetime.now()
+        
+        # 打印启动横幅和配置摘要
+        print_startup_banner()
+        print_config_summary(self.logger)
         
         # 验证配置
         config.validate()
@@ -164,12 +170,18 @@ class StockMonitor:
             scheduler.start()
             
         except KeyboardInterrupt:
-            self._log("⏹️  收到停止信号")
+            self._log("⏹️  收到停止信号", "warning")
         except Exception as e:
-            self._log(f"❌ 运行出错: {e}")
+            self._log(f"❌ 运行出错: {e}", "error")
         finally:
             self.scraper.stop()
-            self._log("👋 监控服务已停止")
+            uptime = datetime.now() - self.start_time if self.start_time else None
+            if uptime:
+                hours, remainder = divmod(int(uptime.total_seconds()), 3600)
+                minutes, seconds = divmod(remainder, 60)
+                self._log(f"👋 监控服务已停止 (运行时长: {hours}小时{minutes}分{seconds}秒)")
+            else:
+                self._log("👋 监控服务已停止")
 
 
 def run_monitor():
