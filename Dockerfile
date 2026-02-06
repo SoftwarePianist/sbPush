@@ -6,12 +6,14 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install system dependencies with robust timezone setup
-RUN echo "tzdata tzdata/Areas select Asia" | debconf-set-selections && \
-    echo "tzdata tzdata/Zones/Asia select Shanghai" | debconf-set-selections && \
-    DEBIAN_FRONTEND=noninteractive apt-get update && \
-    apt-get install -y tzdata && \
-    rm -rf /var/lib/apt/lists/*
+# Install system dependencies with robust non-interactive timezone setup
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata \
+    && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone \
+    && dpkg-reconfigure -f noninteractive tzdata \
+    && rm -rf /var/lib/apt/lists/*
+ENV DEBIAN_FRONTEND=
 
 # Install Playwright browsers (we only need chromium)
 RUN playwright install chromium
