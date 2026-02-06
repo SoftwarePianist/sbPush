@@ -1,9 +1,9 @@
 services:
   sbpush:
-    build: .
+    image: docker.cnb.cool/csgnb/sbpush:latest # 直接使用远程镜像
     container_name: sbpush
     restart: unless-stopped
     volumes:
-      - ./config:/app/config
+      - ./config:/app/config # 确保 NAS 上的 config 文件夹里有 .env 和 cookies.json
     environment:
       - TZ=Asia/Shanghai
