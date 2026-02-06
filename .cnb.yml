@@ -2,10 +2,8 @@ main:
   push:
     - services:
         - docker
-      env:
-        IMAGE_NAME: sbpush
       stages:
         - name: Docker build & push
           script:
-            - docker build -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}/${IMAGE_NAME}:latest .
-            - docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}/${IMAGE_NAME}:latest
+            - docker build -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest .
+            - docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest
