@@ -1,0 +1,13 @@
+# Cookie 文件示例
+# 从浏览器 F12 开发者工具中复制 Cookie 字符串，格式如下：
+# name1=value1; name2=value2; name3=value3; ...
+#
+# 步骤：
+# 1. 打开 Chrome 浏览器，访问 m.stock.pingan.com 并登录
+# 2. 按 F12 打开开发者工具
+# 3. 切换到 Application (应用) 标签页
+# 4. 在左侧找到 Cookies -> m.stock.pingan.com
+# 5. 在 Console 中执行: document.cookie
+# 6. 复制输出的字符串到此文件（删除这些注释）
+#
+# 或者使用 EditThisCookie 扩展导出为 JSON 格式，保存为 cookies.json

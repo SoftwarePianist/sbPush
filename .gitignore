@@ -21,6 +21,7 @@ build/
 # Project specific
 config/.env
 config/cookies.json
+config/cookies.txt
 *.png
 *.log
 
