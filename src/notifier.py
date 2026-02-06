@@ -182,10 +182,10 @@ class BarkNotifier(BaseNotifier):
     def validate_config(self) -> bool:
         return len(self._get_device_keys()) > 0
     
-    def _send_to_device(self, device_key: str, title: str, content: str, icon: str = None) -> tuple:
+    def _send_to_device(self, device_key: str, title: str, content: str, icon: str = None, url: str = None) -> tuple:
         """向单个设备发送推送，返回 (success, message)"""
         server = self.config.get("server", self.DEFAULT_SERVER).rstrip("/")
-        url = f"{server}/{device_key}"
+        api_url = f"{server}/{device_key}"
         
         # Bark 支持的参数
         params = {
@@ -201,12 +201,19 @@ class BarkNotifier(BaseNotifier):
         elif self.config.get("icon"):
             params["icon"] = self.config["icon"]
         
-        # 可选：点击跳转 URL
-        if self.config.get("url"):
+        # 动态 URL 优先，否则使用配置中的 URL
+        if url:
+            params["url"] = url
+            # 自动复制 URL 到剪贴板
+            params["automaticallyCopy"] = "1"
+            params["copy"] = url
+        elif self.config.get("url"):
             params["url"] = self.config["url"]
+            params["automaticallyCopy"] = "1"
+            params["copy"] = self.config["url"]
         
         try:
-            response = requests.post(url, json=params, timeout=10)
+            response = requests.post(api_url, json=params, timeout=10)
             result = response.json()
             
             if result.get("code") == 200:
@@ -219,7 +226,7 @@ class BarkNotifier(BaseNotifier):
         except Exception as e:
             return False, f"推送异常: {e}"
     
-    def send(self, title: str, content: str = "", icon: str = None) -> NotifyResult:
+    def send(self, title: str, content: str = "", icon: str = None, url: str = None) -> NotifyResult:
         device_keys = self._get_device_keys()
         
         if not device_keys:
@@ -235,7 +242,7 @@ class BarkNotifier(BaseNotifier):
         fail_messages = []
         
         for i, device_key in enumerate(device_keys, 1):
-            success, msg = self._send_to_device(device_key, title, content, icon)
+            success, msg = self._send_to_device(device_key, title, content, icon, url)
             if success:
                 success_count += 1
             else:

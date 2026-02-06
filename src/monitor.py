@@ -100,10 +100,12 @@ class StockMonitor:
             content = "\n".join(content_lines)
             
             if self.notifier_manager:
-                # 对于 Bark 渠道，传入图标；其他渠道忽略
+                # 获取详情页 URL（点击理由跳转的页面）
+                detail_url = current_record.get("detail_url", "") or config.TARGET_URL
+                # 对于 Bark 渠道，传入图标和点击跳转 URL；其他渠道忽略
                 for notifier in self.notifier_manager._notifiers:
                     if notifier.channel_name == "bark":
-                        notifier.send(title, content, icon=icon)
+                        notifier.send(title, content, icon=icon, url=detail_url)
                     else:
                         notifier.send(title, content)
             

@@ -300,6 +300,23 @@ class PageScraper:
             reason_el = record.locator(".reason-info")
             reason = reason_el.inner_text().strip() if reason_el.count() > 0 else ""
             
+            # 构建详情页 URL (点击理由区域跳转的页面)
+            # URL 格式: https://m.stock.pingan.com/invest/zuhe/operateSuggest.html?stockCode={code}&stockName={name}&productNo={id}
+            detail_url = ""
+            if stock_code:
+                import re
+                from urllib.parse import quote
+                # 从 "江苏雷利(300660)" 中提取股票名称和代码
+                match = re.match(r'(.+?)\((\d+)\)', stock_code)
+                if match:
+                    stock_name_raw = match.group(1).strip()
+                    stock_code_only = match.group(2)
+                    # 从 TARGET_URL 中提取 productNo
+                    product_no = "5149"  # 默认值
+                    if "productNo=" in config.TARGET_URL:
+                        product_no = config.TARGET_URL.split("productNo=")[1].split("&")[0]
+                    detail_url = f"https://m.stock.pingan.com/invest/zuhe/operateSuggest.html?stockCode={stock_code_only}&stockName={quote(stock_name_raw)}&productNo={product_no}"
+            
             result = {
                 "trade_type": trade_type,
                 "stock_code": stock_code,
@@ -307,6 +324,7 @@ class PageScraper:
                 "trade_time": trade_time,
                 "price": price,
                 "reason": reason,
+                "detail_url": detail_url,
             }
             
             print(f"📄 提取到结构化数据: {result}")
