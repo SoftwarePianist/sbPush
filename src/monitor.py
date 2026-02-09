@@ -201,35 +201,36 @@ class StockMonitor:
         
         while True:
             now = datetime.now(tz)
-            cron = croniter(cron_5_field, now)
-            next_run = cron.get_next(datetime)
             
-            # 如果有秒级调度
-            if len(cron_parts) == 6:
-                if second_interval:
-                    # 计算下一个符合条件的时间点
-                    # 如果当前分钟符合条件，计算本分钟内的下个触发点
-                    current_second = now.second
-                    if second_interval:
-                        # 找到本分钟内下一个触发秒数
-                        next_second_in_minute = ((current_second // second_interval) + 1) * second_interval
-                        if next_second_in_minute < 60:
-                            # 本分钟内还有触发点，检查是否在调度时间范围内
-                            potential_time = now.replace(second=next_second_in_minute, microsecond=0)
-                            # 使用 croniter 检查这个时间点是否匹配（忽略秒）
-                            check_cron = croniter(cron_5_field, potential_time - timedelta(minutes=1))
-                            check_next = check_cron.get_next(datetime)
-                            if check_next.replace(second=0) == potential_time.replace(second=0):
-                                next_run = potential_time
-                            else:
-                                # 等待下一个匹配的分钟
-                                next_run = cron.get_next(datetime).replace(second=0)
-                        else:
-                            # 需要等到下一分钟
-                            next_run = cron.get_next(datetime).replace(second=0)
+            # 如果有秒级调度 (6字段格式)
+            if len(cron_parts) == 6 and second_interval:
+                # 计算本分钟内下一个触发秒数
+                current_second = now.second
+                next_second_in_minute = ((current_second // second_interval) + 1) * second_interval
+                
+                if next_second_in_minute < 60:
+                    # 本分钟内还有触发点
+                    potential_time = now.replace(second=next_second_in_minute, microsecond=0)
+                    # 检查当前分钟是否在 cron 调度范围内
+                    check_cron = croniter(cron_5_field, now.replace(second=0, microsecond=0) - timedelta(seconds=1))
+                    check_next = check_cron.get_next(datetime)
+                    if check_next.replace(second=0, microsecond=0) == now.replace(second=0, microsecond=0):
+                        # 当前分钟在调度范围内
+                        next_run = potential_time
+                    else:
+                        # 当前分钟不在范围内，等待下一个匹配的分钟
+                        next_run = check_next.replace(second=0, microsecond=0)
                 else:
+                    # 需要等到下一分钟的第0秒（或第一个触发秒）
+                    cron = croniter(cron_5_field, now)
+                    next_run = cron.get_next(datetime).replace(second=0, microsecond=0)
+            else:
+                # 标准 5 字段格式或固定秒数
+                cron = croniter(cron_5_field, now)
+                next_run = cron.get_next(datetime)
+                if len(cron_parts) == 6:
                     # 固定秒数
-                    next_run = next_run.replace(second=target_second)
+                    next_run = next_run.replace(second=target_second, microsecond=0)
             
             wait_seconds = (next_run - now).total_seconds()
             if wait_seconds > 0:
