@@ -11,6 +11,7 @@ from .notifier import NotifierManager, init_notifiers
 from .logger import get_logger, print_startup_banner, print_config_summary
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.executors.pool import ThreadPoolExecutor
 import pytz
 
 
@@ -137,7 +138,21 @@ class StockMonitor:
             
             # 明确指定时区以避免有些环境下的 tzlocal 报错
             tz = pytz.timezone('Asia/Shanghai')
-            scheduler = BlockingScheduler(timezone=tz)
+            
+            # 使用单线程执行器，确保所有任务在同一线程中执行
+            # 这对于 Playwright sync API 是必须的，否则会出现 greenlet 线程切换错误
+            executors = {
+                'default': ThreadPoolExecutor(max_workers=1)
+            }
+            job_defaults = {
+                'coalesce': True,  # 合并错过的任务
+                'max_instances': 1  # 同时最多运行一个实例
+            }
+            scheduler = BlockingScheduler(
+                timezone=tz,
+                executors=executors,
+                job_defaults=job_defaults
+            )
             
             if config.CHECK_CRON:
                 self._log(f"⏱️  使用 Cron 调度: {config.CHECK_CRON}")
