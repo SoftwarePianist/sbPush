@@ -3,15 +3,13 @@
 持续监控页面变化并发送通知
 """
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from .config import config
 from .scraper import PageScraper
 from .notifier import NotifierManager, init_notifiers
 from .logger import get_logger, print_startup_banner, print_config_summary
-from apscheduler.schedulers.blocking import BlockingScheduler
-from apscheduler.triggers.cron import CronTrigger
-from apscheduler.executors.pool import ThreadPoolExecutor
+from croniter import croniter
 import pytz
 
 
@@ -120,7 +118,7 @@ class StockMonitor:
         return False
     
     def run(self) -> None:
-        """启动持续监控"""
+        """启动持续监控（主线程调度，避免 Playwright greenlet 问题）"""
         self.start_time = datetime.now()
         
         # 打印启动横幅和配置摘要
@@ -136,58 +134,25 @@ class StockMonitor:
         try:
             self.scraper.start()
             
-            # 明确指定时区以避免有些环境下的 tzlocal 报错
+            # 明确指定时区
             tz = pytz.timezone('Asia/Shanghai')
-            
-            # 使用单线程执行器，确保所有任务在同一线程中执行
-            # 这对于 Playwright sync API 是必须的，否则会出现 greenlet 线程切换错误
-            executors = {
-                'default': ThreadPoolExecutor(max_workers=1)
-            }
-            job_defaults = {
-                'coalesce': True,  # 合并错过的任务
-                'max_instances': 1  # 同时最多运行一个实例
-            }
-            scheduler = BlockingScheduler(
-                timezone=tz,
-                executors=executors,
-                job_defaults=job_defaults
-            )
-            
-            if config.CHECK_CRON:
-                self._log(f"⏱️  使用 Cron 调度: {config.CHECK_CRON}")
-                cron_parts = config.CHECK_CRON.split()
-                if len(cron_parts) == 6:
-                    # 6 字段格式: 秒 分 时 日 月 周
-                    trigger = CronTrigger(
-                        second=cron_parts[0],
-                        minute=cron_parts[1],
-                        hour=cron_parts[2],
-                        day=cron_parts[3],
-                        month=cron_parts[4],
-                        day_of_week=cron_parts[5],
-                        timezone=tz
-                    )
-                elif len(cron_parts) == 5:
-                    # 5 字段格式: 分 时 日 月 周 (标准 crontab)
-                    trigger = CronTrigger.from_crontab(config.CHECK_CRON, timezone=tz)
-                else:
-                    raise ValueError(f"无效的 Cron 表达式，需要 5 或 6 个字段，实际为 {len(cron_parts)} 个")
-                scheduler.add_job(self.check_once, trigger)
-            else:
-                self._log(f"⏱️  使用固定间隔调度: {config.CHECK_INTERVAL} 秒")
-                scheduler.add_job(self.check_once, 'interval', seconds=config.CHECK_INTERVAL)
             
             # 启动时先执行一次
             self.check_once()
             
-            self._log("⏳ 等待下次调度...")
-            scheduler.start()
+            if config.CHECK_CRON:
+                self._log(f"⏱️  使用 Cron 调度: {config.CHECK_CRON}")
+                self._run_with_cron(tz)
+            else:
+                self._log(f"⏱️  使用固定间隔调度: {config.CHECK_INTERVAL} 秒")
+                self._run_with_interval()
             
         except KeyboardInterrupt:
             self._log("⏹️  收到停止信号", "warning")
         except Exception as e:
             self._log(f"❌ 运行出错: {e}", "error")
+            import traceback
+            traceback.print_exc()
         finally:
             self.scraper.stop()
             uptime = datetime.now() - self.start_time if self.start_time else None
@@ -197,6 +162,81 @@ class StockMonitor:
                 self._log(f"👋 监控服务已停止 (运行时长: {hours}小时{minutes}分{seconds}秒)")
             else:
                 self._log("👋 监控服务已停止")
+    
+    def _run_with_interval(self) -> None:
+        """使用固定间隔运行（主线程循环）"""
+        while True:
+            self._log("⏳ 等待下次调度...")
+            time.sleep(config.CHECK_INTERVAL)
+            self.check_once()
+    
+    def _run_with_cron(self, tz) -> None:
+        """使用 Cron 表达式运行（主线程循环）"""
+        cron_expr = config.CHECK_CRON
+        cron_parts = cron_expr.split()
+        
+        # croniter 只支持 5 字段标准格式，6 字段需要转换
+        if len(cron_parts) == 6:
+            # 6 字段格式: 秒 分 时 日 月 周
+            # 提取秒字段，转换为 5 字段格式
+            second_expr = cron_parts[0]
+            cron_5_field = " ".join(cron_parts[1:])  # 分 时 日 月 周
+            
+            # 解析秒字段以确定间隔
+            if second_expr.startswith("*/"):
+                second_interval = int(second_expr[2:])
+            elif second_expr == "*":
+                second_interval = 1
+            else:
+                # 固定秒数
+                second_interval = None
+                target_second = int(second_expr)
+        else:
+            # 标准 5 字段格式: 分 时 日 月 周
+            cron_5_field = cron_expr
+            second_interval = None
+            target_second = 0
+        
+        self._log(f"⏳ 等待下次调度...")
+        
+        while True:
+            now = datetime.now(tz)
+            cron = croniter(cron_5_field, now)
+            next_run = cron.get_next(datetime)
+            
+            # 如果有秒级调度
+            if len(cron_parts) == 6:
+                if second_interval:
+                    # 计算下一个符合条件的时间点
+                    # 如果当前分钟符合条件，计算本分钟内的下个触发点
+                    current_second = now.second
+                    if second_interval:
+                        # 找到本分钟内下一个触发秒数
+                        next_second_in_minute = ((current_second // second_interval) + 1) * second_interval
+                        if next_second_in_minute < 60:
+                            # 本分钟内还有触发点，检查是否在调度时间范围内
+                            potential_time = now.replace(second=next_second_in_minute, microsecond=0)
+                            # 使用 croniter 检查这个时间点是否匹配（忽略秒）
+                            check_cron = croniter(cron_5_field, potential_time - timedelta(minutes=1))
+                            check_next = check_cron.get_next(datetime)
+                            if check_next.replace(second=0) == potential_time.replace(second=0):
+                                next_run = potential_time
+                            else:
+                                # 等待下一个匹配的分钟
+                                next_run = cron.get_next(datetime).replace(second=0)
+                        else:
+                            # 需要等到下一分钟
+                            next_run = cron.get_next(datetime).replace(second=0)
+                else:
+                    # 固定秒数
+                    next_run = next_run.replace(second=target_second)
+            
+            wait_seconds = (next_run - now).total_seconds()
+            if wait_seconds > 0:
+                self._log(f"⏳ 下次执行: {next_run.strftime('%H:%M:%S')} (等待 {wait_seconds:.0f} 秒)")
+                time.sleep(wait_seconds)
+            
+            self.check_once()
 
 
 def run_monitor():
